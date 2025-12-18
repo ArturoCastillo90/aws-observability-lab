@@ -1,0 +1,165 @@
+# AWS Observability Lab – Multi-Instance Monitoring with CloudWatch & Grafana
+
+## Overview
+
+This repository documents a hands-on AWS observability lab focused on **multi-instance monitoring** using EC2, CloudWatch, the CloudWatch Agent, and Grafana.
+
+This lab represents the **second iteration** of the project. Unlike the initial single-instance setup, this version introduces a **production-style, NOC-oriented observability design** with multiple EC2 roles, IAM troubleshooting, and comparative dashboards.
+
+The objective is not only to deploy tooling, but to **validate data flow, diagnose failures, manage cost, and design dashboards with operational intent**, aligned with SRE and Cloud Engineering practices.
+
+---
+
+## Architecture
+
+### Infrastructure
+
+* Custom VPC
+* Public subnet (for lab simplicity)
+* Three EC2 instances:
+
+  * **ec2-observability-public** – Grafana server (observability frontend)
+  * **observability-backend** – backend workload node
+  * **observability-worker** – worker / batch workload node
+
+### Identity & Access Management
+
+* A single IAM Role attached to **all EC2 instances**
+* Policies attached:
+
+  * `CloudWatchAgentServerPolicy`
+  * `CloudWatchReadOnlyAccess`
+
+This role allows instances to publish custom metrics and Grafana to query CloudWatch securely without static credentials.
+
+---
+
+## Instance Tagging Strategy
+
+All EC2 instances use a consistent tagging model to enable scalable observability and filtering:
+
+* `Project = observability`
+* `Environment = lab`
+* `Role = web | backend | worker`
+
+Tags are intentionally designed to support:
+
+* Role-based dashboards
+* Horizontal scalability
+* Future Auto Scaling Group integration
+
+---
+
+## CloudWatch Agent Configuration
+
+The CloudWatch Agent is installed and configured on **all three EC2 instances**.
+
+### Metrics Published (CWAgent Namespace)
+
+* `mem_used_percent`
+* `disk_used_percent`
+* TCP connection metrics (optional)
+
+The agent is explicitly started and validated on each instance to ensure metrics are actively published.
+
+---
+
+## AWS Native Metrics
+
+Using the `AWS/EC2` namespace, the following native metrics are consumed:
+
+* `CPUUtilization`
+* `NetworkIn` / `NetworkOut`
+* `NetworkPacketsIn` / `NetworkPacketsOut`
+
+Packet-based metrics are preferred in this lab due to low traffic volumes, improving visibility in non-production environments.
+
+---
+
+## Grafana Configuration
+
+### Deployment
+
+* Grafana OSS runs on the **ec2-observability-public** instance
+* Accessed via HTTP on port 3000
+* CloudWatch configured as the primary data source using IAM Role authentication
+
+### Base NOC-Style Dashboard
+
+A consolidated dashboard was built with the following panels:
+
+1. **CPU Utilization – All Instances** (AWS/EC2)
+2. **Memory Used – All Instances** (CWAgent)
+3. **Network Traffic – All Instances** (NetworkPacketsIn/Out)
+4. **Disk Used Percent – All Instances** (CWAgent)
+
+Design principles applied:
+
+* One panel, one intent
+* No hard-coded Instance IDs
+* Horizontal comparison across nodes
+
+---
+
+## Operational Exercise: IAM Troubleshooting
+
+### Issue Encountered
+
+Initially, only the Grafana instance appeared in CloudWatch and Grafana dashboards.
+
+### Root Cause
+
+The backend and worker EC2 instances **did not have an IAM Role attached**.
+
+Although the CloudWatch Agent was running, it could not publish metrics without AWS credentials.
+
+### Resolution Steps
+
+* Attached the correct IAM Role to backend and worker instances
+* Restarted the CloudWatch Agent on both nodes
+* Verified metric visibility in `CloudWatch → Metrics → CWAgent`
+
+### Lesson Learned
+
+> A running agent does not guarantee observability without correct IAM permissions.
+
+This mirrors a common real-world production failure scenario.
+
+---
+
+## Cost Management Actions
+
+To prevent unnecessary charges:
+
+* All EC2 instances were **stopped** after the lab session
+* Elastic IPs used for access were **disassociated and released**
+* No NAT Gateways or Load Balancers were provisioned
+
+The lab is designed to remain within free-tier or minimal cost boundaries.
+
+---
+
+## Lab Status
+
+* Multi-instance observability validated
+* IAM misconfiguration identified and resolved
+* Base Grafana dashboard completed
+* Infrastructure safely stopped
+
+---
+
+## Next Iterations
+
+Planned future work includes:
+
+* Role-based dashboards using EC2 tags
+* Controlled load testing on the worker node
+* Log ingestion with CloudWatch Logs
+* Alerting based on SRE thresholds
+* Incident simulation and post-mortem documentation
+
+---
+
+## Notes
+
+This repository documents an **iterative lab**, evolving across sessions to reflect real-world infrastructure growth rather than a static demo.
